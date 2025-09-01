@@ -1,56 +1,88 @@
 export default async function handler(req, res) {
   // Security check
   if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Unauthorized' 
+    });
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ 
+      success: false, 
+      error: 'Method not allowed' 
+    });
   }
 
   try {
-    // Get basic dashboard data
+    // Get basic dashboard data with proper fallbacks
     const dashboardData = {
-      status: 'idle',
-      lastRun: process.env.LAST_RUN_TIME || null,
-      lastResult: process.env.LAST_RUN_RESULT || null,
-      logs: await getRecentLogs()
+      success: true,
+      data: {
+        status: 'idle',
+        lastRun: formatLastRunTime(),
+        lastResult: getLastResultStatus(),
+        logs: getRecentLogs()
+      }
     };
 
-    res.status(200).json(dashboardData);
+    return res.status(200).json(dashboardData);
   } catch (error) {
     console.error('Dashboard API error:', error);
-    res.status(500).json({ 
+    return res.status(500).json({ 
+      success: false,
       error: 'Failed to load dashboard data',
-      details: error.message 
+      data: {
+        status: 'error',
+        lastRun: 'Unknown',
+        lastResult: 'error',
+        logs: [
+          {
+            timestamp: new Date().toLocaleString(),
+            message: 'Dashboard error: ' + error.message,
+            type: 'error'
+          }
+        ]
+      }
     });
   }
 }
 
-async function getRecentLogs() {
-  // Simple log storage - in a real app you'd use a database
-  // For now, we'll return some basic info from environment variables
-  const logs = [];
+// Format last run time with proper fallback
+function formatLastRunTime() {
+  // In serverless, we can't persist state in environment variables
+  // This would need a proper database in production
+  return 'Status information not available in serverless mode';
+}
+
+// Get last result status with fallback
+function getLastResultStatus() {
+  // In serverless, we can't persist state in environment variables
+  // This would need a proper database in production
+  return 'unknown';
+}
+
+// Get recent logs with proper fallbacks
+function getRecentLogs() {
+  // Since we can't persist state in serverless environment,
+  // return helpful static information
+  const currentTime = new Date().toLocaleString();
   
-  if (process.env.LAST_RUN_TIME) {
-    const result = process.env.LAST_RUN_RESULT || 'unknown';
-    const message = process.env.LAST_RUN_MESSAGE || `Bot execution ${result}`;
-    
-    logs.push({
-      timestamp: new Date(process.env.LAST_RUN_TIME).toLocaleString(),
-      message: message,
-      type: result === 'success' ? 'success' : result === 'error' ? 'error' : 'info'
-    });
-  }
-
-  // Add some static info logs
-  if (logs.length === 0) {
-    logs.push({
-      timestamp: new Date().toLocaleString(),
-      message: 'Dashboard initialized - no recent bot activity',
+  return [
+    {
+      timestamp: currentTime,
+      message: 'Dashboard loaded successfully',
+      type: 'success'
+    },
+    {
+      timestamp: currentTime,
+      message: 'Bot ready for manual execution',
       type: 'info'
-    });
-  }
-
-  return logs.slice(0, 10); // Return last 10 logs max
+    },
+    {
+      timestamp: currentTime,
+      message: 'Note: Execution history not available in stateless mode',
+      type: 'info'
+    }
+  ];
 }

@@ -2,15 +2,21 @@
 export default async function handler(req, res) {
   // Security check
   if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ 
+      success: false,
+      error: 'Unauthorized' 
+    });
   }
 
   const { component } = req.query;
   
   if (!component) {
     return res.status(400).json({
+      success: false,
       error: 'Missing component parameter',
-      availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash', 'translation', 'telegram']
+      data: {
+        availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash', 'translation', 'telegram']
+      }
     });
   }
 
@@ -40,20 +46,32 @@ export default async function handler(req, res) {
         result = await testTelegram();
         break;
       default:
-        return res.status(400).json({ error: 'Invalid component' });
+        return res.status(400).json({ 
+          success: false,
+          error: 'Invalid component',
+          data: {
+            availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash', 'translation', 'telegram']
+          }
+        });
     }
 
-    return res.json({
-      component,
-      timestamp: new Date().toISOString(),
-      result
+    return res.status(200).json({
+      success: true,
+      data: {
+        component,
+        timestamp: new Date().toISOString(),
+        ...result
+      }
     });
 
   } catch (error) {
     return res.status(500).json({
-      component,
+      success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
+      data: {
+        component,
+        timestamp: new Date().toISOString()
+      }
     });
   }
 }
