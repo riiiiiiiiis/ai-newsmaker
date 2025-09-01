@@ -1,11 +1,16 @@
 // Individual component testing endpoint
 export default async function handler(req, res) {
+  // Security check
+  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   const { component } = req.query;
   
   if (!component) {
     return res.status(400).json({
       error: 'Missing component parameter',
-      availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash']
+      availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash', 'translation', 'telegram']
     });
   }
 
@@ -27,6 +32,12 @@ export default async function handler(req, res) {
         break;
       case 'hash':
         result = await testHash();
+        break;
+      case 'translation':
+        result = await testTranslation();
+        break;
+      case 'telegram':
+        result = await testTelegram();
         break;
       default:
         return res.status(400).json({ error: 'Invalid component' });
@@ -234,3 +245,99 @@ function formatForTelegram(text) {
 
 // Import crypto for hash testing
 import { createHash } from 'crypto';
+
+// Test translation functionality
+async function testTranslation() {
+  try {
+    const testText = "# AI Trends Test\n\nThis is a test of the translation system.";
+    
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://newsmaker-bot.local',
+        'X-Title': 'Newsmaker Bot'
+      },
+      body: JSON.stringify({
+        model: 'anthropic/claude-3.5-haiku',
+        messages: [{
+          role: 'user',
+          content: `Translate this English text to Russian, maintaining markdown formatting:\n\n${testText}`
+        }],
+        max_tokens: 1000,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const translatedText = data.choices?.[0]?.message?.content;
+
+    if (!translatedText) {
+      throw new Error('No translation received from OpenRouter');
+    }
+
+    const duration = Date.now() - Date.now();
+    
+    return {
+      status: 'success',
+      duration: `${duration}ms`,
+      inputLength: testText.length,
+      outputLength: translatedText.length,
+      original: testText.substring(0, 100),
+      translated: translatedText.substring(0, 100)
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      message: `Translation test failed: ${error.message}`
+    };
+  }
+}
+
+// Test Telegram functionality
+async function testTelegram() {
+  try {
+    const testMessage = '🔧 Dashboard Test\n\nTesting Telegram connectivity from dashboard.';
+    
+    const start = Date.now();
+    const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: process.env.TELEGRAM_CHANNEL_ID,
+        text: testMessage,
+        parse_mode: 'HTML'
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Telegram API error: ${errorData.description || response.status}`);
+    }
+
+    const data = await response.json();
+    const duration = Date.now() - start;
+    
+    if (!data.ok) {
+      throw new Error(`Telegram API returned error: ${data.description}`);
+    }
+
+    return {
+      status: 'success',
+      duration: `${duration}ms`,
+      messageId: data.result.message_id,
+      chatId: data.result.chat.id,
+      chatTitle: data.result.chat.title
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      message: `Telegram test failed: ${error.message}`
+    };
+  }
+}

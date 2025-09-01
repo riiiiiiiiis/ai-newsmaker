@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newsmaker Bot Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: #f5f5f5; 
+            padding: 20px; 
+            line-height: 1.6; 
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        h1 { color: #333; margin-bottom: 30px; text-align: center; }
+        .actions { 
+            display: flex; 
+            gap: 15px; 
+            margin-bottom: 30px; 
+            flex-wrap: wrap; 
+        }
+        button { 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            font-weight: 500; 
+            transition: all 0.2s; 
+        }
+        .btn-primary { 
+            background: #007bff; 
+            color: white; 
+        }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-secondary { 
+            background: #6c757d; 
+            color: white; 
+        }
+        .btn-secondary:hover { background: #545b62; }
+        button:disabled { 
+            background: #ccc; 
+            cursor: not-allowed; 
+        }
+        .status { 
+            background: #f8f9fa; 
+            padding: 20px; 
+            border-radius: 5px; 
+            margin-bottom: 25px; 
+        }
+        .status-item { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 10px; 
+        }
+        .status-item:last-child { margin-bottom: 0; }
+        .label { font-weight: 600; color: #495057; }
+        .value { color: #6c757d; }
+        .success { color: #28a745; font-weight: 600; }
+        .error { color: #dc3545; font-weight: 600; }
+        .logs { margin-top: 25px; }
+        .logs h3 { 
+            color: #495057; 
+            margin-bottom: 15px; 
+            font-size: 18px; 
+        }
+        .log-entry { 
+            padding: 12px; 
+            margin-bottom: 8px; 
+            border-radius: 4px; 
+            font-family: 'Monaco', 'Menlo', monospace; 
+            font-size: 13px; 
+        }
+        .log-success { background: #d4edda; border-left: 4px solid #28a745; }
+        .log-error { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .log-info { background: #e2e3e5; border-left: 4px solid #6c757d; }
+        .loading { 
+            display: inline-block; 
+            width: 16px; 
+            height: 16px; 
+            border: 2px solid #ccc; 
+            border-top: 2px solid #007bff; 
+            border-radius: 50%; 
+            animation: spin 1s linear infinite; 
+            margin-left: 8px; 
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .password-input { 
+            display: none; 
+            margin-bottom: 15px; 
+        }
+        .password-input input { 
+            padding: 10px; 
+            border: 1px solid #ddd; 
+            border-radius: 4px; 
+            width: 200px; 
+            margin-right: 10px; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Newsmaker Bot Dashboard</h1>
+        
+        <div class="password-input" id="passwordInput">
+            <input type="password" id="password" placeholder="Enter admin password">
+            <button onclick="authenticate()" class="btn-secondary">Login</button>
+        </div>
+
+        <div id="dashboard" style="display: none;">
+            <div class="actions">
+                <button onclick="runBot()" class="btn-primary" id="runBtn">▶️ Run Bot Now</button>
+                <button onclick="testTranslation()" class="btn-secondary">🔤 Test Translation</button>
+                <button onclick="testTelegram()" class="btn-secondary">📱 Test Telegram</button>
+                <button onclick="loadStatus()" class="btn-secondary">🔄 Refresh</button>
+            </div>
+
+            <div class="status" id="status">
+                <div class="status-item">
+                    <span class="label">Status:</span>
+                    <span class="value" id="currentStatus">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Last Run:</span>
+                    <span class="value" id="lastRun">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Last Result:</span>
+                    <span class="value" id="lastResult">-</span>
+                </div>
+            </div>
+
+            <div class="logs">
+                <h3>Recent Activity</h3>
+                <div id="logContainer">
+                    Loading logs...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let authToken = null;
+        
+        window.onload = function() {
+            document.getElementById('passwordInput').style.display = 'block';
+        };
+
+        function authenticate() {
+            const password = document.getElementById('password').value;
+            if (password) {
+                authToken = password;
+                document.getElementById('passwordInput').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                loadStatus();
+            }
+        }
+
+        async function apiCall(endpoint, options = {}) {
+            if (!authToken) {
+                alert('Please login first');
+                return null;
+            }
+            
+            const response = await fetch(`/api/${endpoint}`, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API call failed: ${response.status}`);
+            }
+            
+            return response.json();
+        }
+
+        async function loadStatus() {
+            try {
+                const data = await apiCall('dashboard');
+                
+                document.getElementById('currentStatus').textContent = data.status;
+                document.getElementById('currentStatus').className = `value ${data.status === 'idle' ? '' : data.status}`;
+                
+                document.getElementById('lastRun').textContent = data.lastRun || 'Never';
+                document.getElementById('lastResult').textContent = data.lastResult || '-';
+                document.getElementById('lastResult').className = `value ${data.lastResult === 'success' ? 'success' : data.lastResult === 'error' ? 'error' : ''}`;
+                
+                const logContainer = document.getElementById('logContainer');
+                if (data.logs && data.logs.length > 0) {
+                    logContainer.innerHTML = data.logs.map(log => {
+                        const type = log.type || 'info';
+                        return `<div class="log-entry log-${type}">${log.timestamp} - ${log.message}</div>`;
+                    }).join('');
+                } else {
+                    logContainer.innerHTML = '<div class="log-entry log-info">No recent activity</div>';
+                }
+            } catch (error) {
+                console.error('Error loading status:', error);
+                document.getElementById('currentStatus').textContent = 'Error loading status';
+                document.getElementById('currentStatus').className = 'value error';
+            }
+        }
+
+        async function runBot() {
+            const btn = document.getElementById('runBtn');
+            btn.disabled = true;
+            btn.innerHTML = 'Running... <span class="loading"></span>';
+            
+            try {
+                const result = await apiCall('manual-trigger', { method: 'POST' });
+                alert(result.message || 'Bot executed successfully!');
+                loadStatus();
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '▶️ Run Bot Now';
+            }
+        }
+
+        async function testTranslation() {
+            try {
+                const result = await apiCall('test?component=translation');
+                alert(`Translation test: ${result.status}\n${result.message || ''}`);
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function testTelegram() {
+            try {
+                const result = await apiCall('test?component=telegram');
+                alert(`Telegram test: ${result.status}\n${result.message || ''}`);
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
