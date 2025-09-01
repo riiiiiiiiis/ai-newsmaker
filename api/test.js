@@ -1,0 +1,236 @@
+// Individual component testing endpoint
+export default async function handler(req, res) {
+  const { component } = req.query;
+  
+  if (!component) {
+    return res.status(400).json({
+      error: 'Missing component parameter',
+      availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash']
+    });
+  }
+
+  try {
+    let result;
+    
+    switch (component) {
+      case 'fetch':
+        result = await testFetch();
+        break;
+      case 'analyze':
+        result = await testAnalyze();
+        break;
+      case 'format':
+        result = await testFormat();
+        break;
+      case 'send-test':
+        result = await testSend();
+        break;
+      case 'hash':
+        result = await testHash();
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid component' });
+    }
+
+    return res.json({
+      component,
+      timestamp: new Date().toISOString(),
+      result
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      component,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+// Test GitHub content fetching
+async function testFetch() {
+  if (!process.env.GITHUB_RAW_URL) {
+    throw new Error('GITHUB_RAW_URL not configured');
+  }
+
+  const start = Date.now();
+  const response = await fetch(process.env.GITHUB_RAW_URL);
+  
+  if (!response.ok) {
+    throw new Error(`GitHub fetch failed: ${response.status} ${response.statusText}`);
+  }
+  
+  const content = await response.text();
+  const duration = Date.now() - start;
+  
+  return {
+    status: 'success',
+    duration: `${duration}ms`,
+    contentLength: content.length,
+    contentPreview: content.substring(0, 200) + '...',
+    lastModified: response.headers.get('last-modified')
+  };
+}
+
+// Test AI analysis
+async function testAnalyze() {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY not configured');
+  }
+
+  // Use sample content for testing
+  const sampleContent = `# Reddit AI Trends - Sample
+  
+  ## Top Posts
+  | Title | Score | Comments |
+  |-------|-------|----------|
+  | New LLM breakthrough | 1500 | 200 |
+  | AI hardware news | 1200 | 150 |`;
+
+  const start = Date.now();
+  
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://github.com/reddit-ai-trends-bot',
+      'X-Title': 'Reddit AI Trends Bot'
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [{
+        role: 'system',
+        content: 'Extract the top 3 trends from this sample data and format as a brief list.'
+      }, {
+        role: 'user',
+        content: sampleContent
+      }],
+      temperature: 0.3,
+      max_tokens: 1000
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter API failed: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const duration = Date.now() - start;
+
+  return {
+    status: 'success',
+    duration: `${duration}ms`,
+    inputLength: sampleContent.length,
+    outputLength: data.choices[0].message.content.length,
+    output: data.choices[0].message.content
+  };
+}
+
+// Test message formatting
+async function testFormat() {
+  const sampleInput = `🔥 AI Тренды Reddit | 01.09.2025
+
+📊 ГЛАВНОЕ СЕГОДНЯ:
+• Тестовый тренд 1
+• Тестовый тренд 2
+
+🏆 ТОП-3:
+1. 🚀 Test trend
+   → Why it matters`;
+
+  const formatted = formatForTelegram(sampleInput);
+  
+  return {
+    status: 'success',
+    inputLength: sampleInput.length,
+    outputLength: formatted.length,
+    withinTelegramLimit: formatted.length <= 4096,
+    charUtilization: `${((formatted.length / 4096) * 100).toFixed(1)}%`,
+    preview: formatted
+  };
+}
+
+// Test Telegram sending (with test message)
+async function testSend() {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHANNEL_ID) {
+    throw new Error('Telegram credentials not configured');
+  }
+
+  const testMessage = `🧪 <b>Test Message</b>
+
+This is a test message from the AI News Bot dashboard.
+Timestamp: ${new Date().toISOString()}
+
+If you see this, the bot is working correctly! ✅`;
+
+  const start = Date.now();
+  
+  const response = await fetch(
+    `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: process.env.TELEGRAM_CHANNEL_ID,
+        text: testMessage,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Telegram API failed: ${errorText}`);
+  }
+
+  const result = await response.json();
+  const duration = Date.now() - start;
+
+  return {
+    status: 'success',
+    duration: `${duration}ms`,
+    messageId: result.result.message_id,
+    chatId: result.result.chat.id,
+    chatTitle: result.result.chat.title
+  };
+}
+
+// Test hash functionality
+async function testHash() {
+  const testContent1 = "Test content 1";
+  const testContent2 = "Test content 2";
+  const testContent3 = "Test content 1"; // Same as first
+  
+  const hash1 = createHash('sha256').update(testContent1).digest('hex');
+  const hash2 = createHash('sha256').update(testContent2).digest('hex');
+  const hash3 = createHash('sha256').update(testContent3).digest('hex');
+  
+  return {
+    status: 'success',
+    tests: {
+      sameContentSameHash: hash1 === hash3,
+      differentContentDifferentHash: hash1 !== hash2
+    },
+    hashes: {
+      content1: hash1.substring(0, 16) + '...',
+      content2: hash2.substring(0, 16) + '...',
+      content3: hash3.substring(0, 16) + '...'
+    }
+  };
+}
+
+// Helper function for formatting (simplified version)
+function formatForTelegram(text) {
+  const formatted = text.trim();
+  
+  if (formatted.length > 4096) {
+    return formatted.substring(0, 4000) + '\n\n... [обрезано]';
+  }
+  
+  return formatted;
+}
+
+// Import crypto for hash testing
+import { createHash } from 'crypto';

@@ -1,38 +1,136 @@
 import { createHash } from 'crypto';
 
 export default async function handler(req, res) {
+  const startTime = Date.now();
+  const runId = generateRunId();
+  
+  // Enhanced logging function
+  const log = (step, message, data = {}) => {
+    const timestamp = new Date().toISOString();
+    const elapsed = Date.now() - startTime;
+    console.log(`[${runId}] [${timestamp}] [${elapsed}ms] ${step}: ${message}`, data);
+  };
+
+  log('START', 'Daily report execution started', { 
+    headers: Object.keys(req.headers), 
+    method: req.method 
+  });
+
   // 1. Проверка cron secret для безопасности
   if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
+    log('AUTH', 'Authorization failed - invalid secret');
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  
+  log('AUTH', 'Authorization successful');
 
   try {
     // 2. Получение markdown контента с GitHub
+    log('FETCH', 'Fetching content from GitHub...');
     const mdContent = await fetchMarkdownContent();
+    log('FETCH', 'Content fetched successfully', { 
+      sourceLength: mdContent.length,
+      sourcePreview: mdContent.substring(0, 100) + '...'
+    });
     
     // 3. Проверка изменений контента
+    log('HASH', 'Checking for content changes...');
     if (!hasContentChanged(mdContent)) {
-      return res.json({ message: 'No changes detected' });
+      log('HASH', 'No changes detected - skipping report');
+      return res.json({ 
+        message: 'No changes detected',
+        runId,
+        duration: Date.now() - startTime
+      });
     }
+    log('HASH', 'Content changes detected - proceeding with report');
     
-    // 4. Перевод контента через OpenRouter
-    const translatedContent = await translateWithOpenRouter(mdContent);
+    // 4. Анализ и извлечение трендов через OpenRouter
+    log('ANALYZE', 'Starting AI analysis and trend extraction...');
+    const analysisStart = Date.now();
+    const analyzedContent = await translateWithOpenRouter(mdContent);
+    const analysisTime = Date.now() - analysisStart;
+    log('ANALYZE', 'AI analysis completed', { 
+      inputLength: mdContent.length,
+      outputLength: analyzedContent.length,
+      analysisTime: analysisTime,
+      efficiency: `${((analyzedContent.length / mdContent.length) * 100).toFixed(1)}% compression`
+    });
     
-    // 5. Простое форматирование для Telegram  
-    const telegramText = formatForTelegram(translatedContent);
+    // 5. Форматирование для Telegram  
+    log('FORMAT', 'Formatting for Telegram...');
+    const telegramText = formatForTelegram(analyzedContent);
+    log('FORMAT', 'Formatting completed', { 
+      finalLength: telegramText.length,
+      withinLimit: telegramText.length <= 4096,
+      charUtilization: `${((telegramText.length / 4096) * 100).toFixed(1)}%`
+    });
     
     // 6. Отправка в Telegram канал
-    await sendToTelegram(telegramText);
+    log('SEND', 'Sending to Telegram channel...');
+    const sendStart = Date.now();
+    const sendResult = await sendToTelegram(telegramText);
+    const sendTime = Date.now() - sendStart;
+    log('SEND', 'Message sent successfully', { 
+      messageId: sendResult?.message_id,
+      sendTime: sendTime,
+      channelId: process.env.TELEGRAM_CHANNEL_ID
+    });
     
     // 7. Сохранение hash для следующей проверки
     await saveContentHash(mdContent);
+    log('HASH', 'Content hash saved for next run');
     
-    return res.json({ success: true, message: 'Daily report sent successfully' });
+    const totalTime = Date.now() - startTime;
+    log('SUCCESS', 'Daily report completed successfully', {
+      totalDuration: totalTime,
+      stages: {
+        fetch: 'completed',
+        analyze: analysisTime,
+        format: 'completed', 
+        send: sendTime
+      },
+      metrics: {
+        sourceChars: mdContent.length,
+        finalChars: telegramText.length,
+        compressionRatio: `${((telegramText.length / mdContent.length) * 100).toFixed(1)}%`
+      }
+    });
+    
+    return res.json({ 
+      success: true, 
+      message: 'Daily report sent successfully',
+      runId,
+      duration: totalTime,
+      metrics: {
+        sourceLength: mdContent.length,
+        finalLength: telegramText.length,
+        analysisTime: analysisTime,
+        sendTime: sendTime
+      }
+    });
     
   } catch (error) {
-    console.error('Error in daily report:', error);
-    return res.status(500).json({ error: error.message });
+    const totalTime = Date.now() - startTime;
+    log('ERROR', 'Daily report failed', {
+      error: error.message,
+      stack: error.stack,
+      duration: totalTime
+    });
+    
+    console.error(`[${runId}] Full error details:`, error);
+    
+    return res.status(500).json({ 
+      error: error.message,
+      runId,
+      duration: totalTime
+    });
   }
+}
+
+// Generate unique run ID for tracking
+function generateRunId() {
+  return 'run_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
 // Получение markdown контента с GitHub
@@ -163,5 +261,8 @@ async function sendToTelegram(text) {
     throw new Error(`Telegram API error: ${errorText}`);
   }
   
-  console.log('Message sent successfully!');
+  const result = await response.json();
+  console.log('Message sent successfully!', { messageId: result.result?.message_id });
+  
+  return result.result; // Return the message result for logging
 }
