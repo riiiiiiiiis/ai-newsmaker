@@ -1,0 +1,25 @@
+{
+  "name": "reddit-ai-trends-bot",
+  "version": "1.0.0",
+  "description": "Минималистичный MVP Telegram бота для перевода AI трендов с Reddit",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "node --experimental-json-modules api/daily-report.js",
+    "deploy": "vercel deploy --prod"
+  },
+  "devDependencies": {
+    "dotenv": "^17.2.1"
+  },
+  "keywords": [
+    "telegram-bot",
+    "reddit",
+    "ai-trends",
+    "vercel",
+    "serverless",
+    "openrouter"
+  ],
+  "license": "MIT"
+}
