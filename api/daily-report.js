@@ -16,13 +16,27 @@ export default async function handler(req, res) {
     method: req.method 
   });
 
-  // 1. Проверка cron secret для безопасности
-  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    log('AUTH', 'Authorization failed - invalid secret');
+  // Method guard: allow only GET/POST
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    log('METHOD', 'Method not allowed', { method: req.method });
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // 1. Authorization for cron and manual triggers
+  // Accept either Vercel Cron header or Bearer secret
+  const hasVercelCronHeader = typeof req.headers['x-vercel-cron'] !== 'undefined';
+  const authHeader = req.headers['authorization'] || '';
+  const expectedBearer = `Bearer ${process.env.CRON_SECRET}`;
+
+  if (!hasVercelCronHeader && authHeader !== expectedBearer) {
+    log('AUTH', 'Authorization failed', {
+      hasVercelCronHeader,
+      hasAuthHeader: Boolean(authHeader)
+    });
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
-  log('AUTH', 'Authorization successful');
+  log('AUTH', 'Authorization successful', { via: hasVercelCronHeader ? 'vercel-cron' : 'bearer' });
 
   try {
     // 2. Получение markdown контента с GitHub
@@ -242,6 +256,9 @@ function formatForTelegram(text) {
 
 // Отправка одного сообщения в Telegram
 async function sendToTelegram(text) {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHANNEL_ID) {
+    throw new Error('Telegram credentials not configured');
+  }
   const response = await fetch(
     `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
     {

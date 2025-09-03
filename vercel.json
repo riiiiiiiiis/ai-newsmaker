@@ -9,6 +9,9 @@
   "functions": {
     "api/daily-report.js": {
       "maxDuration": 30
+    },
+    "api/post-deploy-verify.js": {
+      "maxDuration": 30
     }
   }
 }
