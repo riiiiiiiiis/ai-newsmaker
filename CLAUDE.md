@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm install` - Install dependencies (only marked for markdown parsing)
 
 ### Build & Deploy
-- `npm run build` - Build with Vercel
-- `npm run deploy` - Deploy to production with Vercel
+- `npm run build` - Build with Vercel  
+- **IMPORTANT: DO NOT use `vercel deploy` commands - deployment happens automatically via GitHub push**
 
 ### Testing
 - `node test-full-flow.js` - Test complete pipeline without Telegram sending
@@ -39,11 +39,13 @@ Vercel Cron (12:00 UTC) → /api/daily-report.js →
 [Fetch GitHub MD] → [OpenRouter Translation] → [MD→HTML] → [Telegram Send]
 ```
 
-### Single File Architecture
-- **api/daily-report.js** - Contains entire business logic (~180 lines)
-- All functionality is consolidated: fetching, translation, formatting, sending, error handling
-- Uses Node.js 18+ built-in APIs (fetch, crypto) to minimize dependencies
-- Only external dependency: `marked` for markdown-to-HTML conversion
+### Edge Functions Architecture  
+- **api/daily-report.js** - Main bot logic using Edge Runtime (300s timeout on free plan)
+- **api/status.js** - Health checks and monitoring
+- **api/test.js** - Component testing endpoints
+- **api/post-deploy-verify.js** - Deployment verification
+- All functions use Edge Runtime for extended timeout (vs 10s Node.js limit)
+- Uses Web Standard APIs (fetch, crypto.subtle) instead of Node.js APIs
 
 ### Environment Variables (see .env.example)
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token from BotFather
@@ -62,7 +64,7 @@ Vercel Cron (12:00 UTC) → /api/daily-report.js →
 
 ### Vercel Configuration
 - `vercel.json` defines daily cron job at 12:00 UTC
-- Function timeout set to 30 seconds
+- Edge Functions automatically support up to 300 seconds timeout on free plan
 - Serverless deployment optimized for minimal cost (~$0.30/month)
 
 ## Philosophy

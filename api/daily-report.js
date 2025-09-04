@@ -1,6 +1,17 @@
-import { createHash } from 'crypto';
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
-export default async function handler(req, res) {
+// Handle both GET and POST requests for manual triggers and Vercel cron
+export async function GET(request) {
+  return await handleDailyReport(request);
+}
+
+export async function POST(request) {
+  return await handleDailyReport(request);
+}
+
+async function handleDailyReport(request) {
   const startTime = Date.now();
   const runId = generateRunId();
   
@@ -12,20 +23,14 @@ export default async function handler(req, res) {
   };
 
   log('START', 'Daily report execution started', { 
-    headers: Object.keys(req.headers), 
-    method: req.method 
+    headers: Array.from(request.headers.keys()), 
+    method: request.method 
   });
-
-  // Method guard: allow only GET/POST
-  if (req.method !== 'GET' && req.method !== 'POST') {
-    log('METHOD', 'Method not allowed', { method: req.method });
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
 
   // 1. Authorization for cron and manual triggers
   // Accept either Vercel Cron header or Bearer secret
-  const hasVercelCronHeader = typeof req.headers['x-vercel-cron'] !== 'undefined';
-  const authHeader = req.headers['authorization'] || '';
+  const hasVercelCronHeader = request.headers.get('x-vercel-cron') !== null;
+  const authHeader = request.headers.get('authorization') || '';
   const expectedBearer = `Bearer ${process.env.CRON_SECRET}`;
 
   if (!hasVercelCronHeader && authHeader !== expectedBearer) {
@@ -33,7 +38,7 @@ export default async function handler(req, res) {
       hasVercelCronHeader,
       hasAuthHeader: Boolean(authHeader)
     });
-    return res.status(401).json({ error: 'Unauthorized' });
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
   log('AUTH', 'Authorization successful', { via: hasVercelCronHeader ? 'vercel-cron' : 'bearer' });
@@ -49,9 +54,9 @@ export default async function handler(req, res) {
     
     // 3. Проверка изменений контента
     log('HASH', 'Checking for content changes...');
-    if (!hasContentChanged(mdContent)) {
+    if (!(await hasContentChanged(mdContent))) {
       log('HASH', 'No changes detected - skipping report');
-      return res.json({ 
+      return Response.json({ 
         message: 'No changes detected',
         runId,
         duration: Date.now() - startTime
@@ -111,7 +116,7 @@ export default async function handler(req, res) {
       }
     });
     
-    return res.json({ 
+    return Response.json({ 
       success: true, 
       message: 'Daily report sent successfully',
       runId,
@@ -134,11 +139,11 @@ export default async function handler(req, res) {
     
     console.error(`[${runId}] Full error details:`, error);
     
-    return res.status(500).json({ 
+    return Response.json({ 
       error: error.message,
       runId,
       duration: totalTime
-    });
+    }, { status: 500 });
   }
 }
 
@@ -159,8 +164,13 @@ async function fetchMarkdownContent() {
 }
 
 // Проверка изменений контента через hash
-function hasContentChanged(newContent) {
-  const newHash = createHash('sha256').update(newContent).digest('hex');
+async function hasContentChanged(newContent) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(newContent);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const newHash = Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
   const lastHash = process.env.LAST_CONTENT_HASH || '';
   
   return newHash !== lastHash;
@@ -168,7 +178,12 @@ function hasContentChanged(newContent) {
 
 // Сохранение hash контента (в продакшене можно использовать Vercel KV)
 async function saveContentHash(content) {
-  const hash = createHash('sha256').update(content).digest('hex');
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hash = Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
   // В MVP просто логируем - в продакшене сохранить в KV или базу
   console.log('New content hash:', hash);
 }
