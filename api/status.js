@@ -1,7 +1,9 @@
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
 // Health check endpoint - Tests all integrations and returns status
-export default async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json');
-  
+export async function GET() {
   const startTime = Date.now();
   
   // Initialize status object
@@ -62,7 +64,11 @@ export default async function handler(req, res) {
   // Calculate response time
   status.performance.responseTime = Date.now() - startTime;
 
-  return res.status(200).json(status);
+  return Response.json(status, {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
 }
 
 // Check Telegram bot connectivity
@@ -73,8 +79,7 @@ async function checkTelegramBot() {
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getMe`, {
-      method: 'GET',
-      timeout: 10000
+      method: 'GET'
     });
 
     if (!response.ok) {
@@ -108,8 +113,7 @@ async function checkChannelAccess() {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHANNEL_ID }),
-        timeout: 10000
+        body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHANNEL_ID })
       }
     );
 
@@ -144,8 +148,7 @@ async function checkOpenRouter() {
       headers: {
         'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json'
-      },
-      timeout: 10000
+      }
     });
 
     if (!response.ok) {
@@ -176,8 +179,7 @@ async function checkGitHubSource() {
 
   try {
     const response = await fetch(process.env.GITHUB_RAW_URL, {
-      method: 'HEAD', // Just check if accessible, don't download content
-      timeout: 10000
+      method: 'HEAD' // Just check if accessible, don't download content
     });
 
     if (!response.ok) {

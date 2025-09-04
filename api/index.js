@@ -1,8 +1,9 @@
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
 // Dashboard at root - Monitor AI News Bot status
-export default async function handler(req, res) {
-  // Set HTML content type
-  res.setHeader('Content-Type', 'text/html');
-  
+export async function GET() {
   // Get current time info
   const now = new Date();
   const nextRun = getNextCronRun();
@@ -291,7 +292,9 @@ export default async function handler(req, res) {
 </html>
   `;
 
-  return res.status(200).send(html);
+  return new Response(html, { 
+    headers: { 'Content-Type': 'text/html' } 
+  });
 }
 
 // Helper function to calculate next cron run

@@ -1,6 +1,8 @@
-import { createHash } from 'crypto';
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
-export default async function handler(req, res) {
+export async function POST(request) {
   const startTime = Date.now();
   const runId = generateRunId();
   
@@ -12,24 +14,17 @@ export default async function handler(req, res) {
   };
 
   log('START', 'Manual trigger execution started', { 
-    headers: Object.keys(req.headers), 
-    method: req.method 
+    headers: Array.from(request.headers.keys()), 
+    method: request.method 
   });
 
   // Security check
-  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     log('AUTH_FAILED', 'Unauthorized access attempt');
-    return res.status(401).json({ 
+    return Response.json({ 
       success: false, 
       error: 'Unauthorized' 
-    });
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed' 
-    });
+    }, { status: 401 });
   }
 
   try {
@@ -81,7 +76,7 @@ export default async function handler(req, res) {
       messageId: sendResult?.message_id
     });
     
-    return res.status(200).json({
+    return Response.json({
       success: true,
       message: 'Bot executed successfully via manual trigger',
       data: {
@@ -106,14 +101,14 @@ export default async function handler(req, res) {
     
     console.error(`[${runId}] Manual trigger error:`, error);
     
-    return res.status(500).json({
+    return Response.json({
       success: false,
       error: `Manual execution failed: ${error.message}`,
       data: {
         runId: runId,
         executionTime: totalTime
       }
-    });
+    }, { status: 500 });
   }
 }
 

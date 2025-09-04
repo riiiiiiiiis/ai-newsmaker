@@ -1,30 +1,30 @@
-export default async function handler(req, res) {
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export async function POST(request) {
   const startTime = Date.now();
 
-  // Allow only POST
-  if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
-  }
-
   // Auth: accept Authorization: Bearer <CRON_SECRET> or ?token=<CRON_SECRET>
-  const authHeader = req.headers['authorization'] || '';
-  const tokenParam = req.query?.token;
+  const authHeader = request.headers.get('authorization') || '';
+  const url = new URL(request.url);
+  const tokenParam = url.searchParams.get('token');
   const expected = `Bearer ${process.env.CRON_SECRET}`;
   const authorized = (authHeader === expected) || (tokenParam && tokenParam === process.env.CRON_SECRET);
 
   if (!authorized) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
+    return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     // Optional flags
-    const delayMs = Number(process.env.POST_DEPLOY_DELAY_MS || req.query?.delayMs || 10000);
-    const runTelegramTest = String(req.query?.testTelegram || '').toLowerCase() === 'true';
+    const delayMs = Number(process.env.POST_DEPLOY_DELAY_MS || url.searchParams.get('delayMs') || 10000);
+    const runTelegramTest = String(url.searchParams.get('testTelegram') || '').toLowerCase() === 'true';
 
     // Wait ~10s after deploy to let routes warm up and envs settle
     await new Promise(resolve => setTimeout(resolve, delayMs));
 
-    const baseUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}`;
+    const baseUrl = `${request.headers.get('x-forwarded-proto') || 'https'}://${request.headers.get('host')}`;
 
     // Check status endpoint
     const statusResp = await fetch(`${baseUrl}/api/status`, { method: 'GET' });
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     }
 
     const duration = Date.now() - startTime;
-    return res.status(200).json({
+    return Response.json({
       success: true,
       duration,
       delayMs,
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       telegramTest
     });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return Response.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 

@@ -1,17 +1,14 @@
-export default async function handler(req, res) {
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+export async function GET(request) {
   // Security check
-  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ 
+  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
+    return Response.json({ 
       success: false, 
       error: 'Unauthorized' 
-    });
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ 
-      success: false, 
-      error: 'Method not allowed' 
-    });
+    }, { status: 401 });
   }
 
   try {
@@ -26,10 +23,10 @@ export default async function handler(req, res) {
       }
     };
 
-    return res.status(200).json(dashboardData);
+    return Response.json(dashboardData);
   } catch (error) {
     console.error('Dashboard API error:', error);
-    return res.status(500).json({ 
+    return Response.json({ 
       success: false,
       error: 'Failed to load dashboard data',
       data: {
@@ -44,7 +41,7 @@ export default async function handler(req, res) {
           }
         ]
       }
-    });
+    }, { status: 500 });
   }
 }
 

@@ -1,23 +1,36 @@
+// Edge Function configuration
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
 // Individual component testing endpoint
-export default async function handler(req, res) {
+export async function GET(request) {
+  return await handleTest(request);
+}
+
+export async function POST(request) {
+  return await handleTest(request);
+}
+
+async function handleTest(request) {
   // Security check
-  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ 
+  if (request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
+    return Response.json({ 
       success: false,
       error: 'Unauthorized' 
-    });
+    }, { status: 401 });
   }
 
-  const { component } = req.query;
+  const url = new URL(request.url);
+  const { component } = Object.fromEntries(url.searchParams);
   
   if (!component) {
-    return res.status(400).json({
+    return Response.json({
       success: false,
       error: 'Missing component parameter',
       data: {
         availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash', 'translation', 'telegram']
       }
-    });
+    }, { status: 400 });
   }
 
   try {
@@ -46,16 +59,16 @@ export default async function handler(req, res) {
         result = await testTelegram();
         break;
       default:
-        return res.status(400).json({ 
+        return Response.json({ 
           success: false,
           error: 'Invalid component',
           data: {
             availableComponents: ['fetch', 'analyze', 'format', 'send-test', 'hash', 'translation', 'telegram']
           }
-        });
+        }, { status: 400 });
     }
 
-    return res.status(200).json({
+    return Response.json({
       success: true,
       data: {
         component,
@@ -65,14 +78,14 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    return res.status(500).json({
+    return Response.json({
       success: false,
       error: error.message,
       data: {
         component,
         timestamp: new Date().toISOString()
       }
-    });
+    }, { status: 500 });
   }
 }
 
@@ -232,9 +245,16 @@ async function testHash() {
   const testContent2 = "Test content 2";
   const testContent3 = "Test content 1"; // Same as first
   
-  const hash1 = createHash('sha256').update(testContent1).digest('hex');
-  const hash2 = createHash('sha256').update(testContent2).digest('hex');
-  const hash3 = createHash('sha256').update(testContent3).digest('hex');
+  const encoder = new TextEncoder();
+  
+  // Generate hashes using Web Crypto API
+  const hashBuffer1 = await crypto.subtle.digest('SHA-256', encoder.encode(testContent1));
+  const hashBuffer2 = await crypto.subtle.digest('SHA-256', encoder.encode(testContent2));
+  const hashBuffer3 = await crypto.subtle.digest('SHA-256', encoder.encode(testContent3));
+  
+  const hash1 = Array.from(new Uint8Array(hashBuffer1)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const hash2 = Array.from(new Uint8Array(hashBuffer2)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const hash3 = Array.from(new Uint8Array(hashBuffer3)).map(b => b.toString(16).padStart(2, '0')).join('');
   
   return {
     status: 'success',
@@ -261,13 +281,13 @@ function formatForTelegram(text) {
   return formatted;
 }
 
-// Import crypto for hash testing
-import { createHash } from 'crypto';
+// Crypto API is available globally in Edge Runtime
 
 // Test translation functionality
 async function testTranslation() {
   try {
     const testText = "# AI Trends Test\n\nThis is a test of the translation system.";
+    const start = Date.now();
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -299,7 +319,7 @@ async function testTranslation() {
       throw new Error('No translation received from OpenRouter');
     }
 
-    const duration = Date.now() - Date.now();
+    const duration = Date.now() - start;
     
     return {
       status: 'success',
